@@ -18,3 +18,12 @@
 - `TEST_LOG=true cargo test health_check_works | npx bunyan` to run a single
   test
   and see the logs.
+
+## Docker image
+
+To build the docker image, run the following command from project root
+directory:
+
+```bash
+docker build --tag newsletter --file docker/Dockerfile .
+```
