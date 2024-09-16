@@ -11,7 +11,7 @@ services:
   - name: newsletter
     # Relative to the repository root
     dockerfile_path: docker/Dockerfile
-    source_dir: ./newsletter
+    source_dir: /newsletter
     github:
       # Depending on when you created the repository,
       # the default branch on GitHub might have been named `master`
