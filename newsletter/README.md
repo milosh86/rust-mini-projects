@@ -27,3 +27,9 @@ directory:
 ```bash
 docker build --tag newsletter --file docker/Dockerfile .
 ```
+
+To run:
+
+```bash
+docker run -p 8000:8000 newsletter
+```

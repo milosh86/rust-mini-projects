@@ -1,0 +1,11 @@
+.env
+.dockerignore
+.idea/
+.github/
+spec.yaml
+target/
+deploy/
+tests/
+docker/
+scripts/
+migrations/
