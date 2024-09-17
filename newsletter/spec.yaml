@@ -1,5 +1,5 @@
 #! spec.yaml
-name: newsletter
+name: newsletter-demo
 # Check https://www.digitalocean.com/docs/app-platform/#regional-availability
 # for a list of all the available options.
 # You can get region slugs from
@@ -8,7 +8,7 @@ name: newsletter
 # `fra` stands for Frankfurt (Germany - EU)
 region: fra
 services:
-  - name: newsletter
+  - name: newsletter-app
     # Relative to the repository root
     dockerfile_path: /newsletter/docker/Dockerfile
     source_dir: /newsletter
