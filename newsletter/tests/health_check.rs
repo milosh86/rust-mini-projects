@@ -1,6 +1,6 @@
 //! tests/health_check.rs
 
-use newsletter::{get_config, get_subscriber, init_subscriber, DatabaseSettings};
+use newsletter::{get_config, get_subscriber, init_subscriber, DatabaseSettings, EmailClient};
 use once_cell::sync::Lazy;
 use secrecy::Secret;
 use sqlx::{query, Connection, Executor, PgConnection, PgPool};
@@ -40,8 +40,18 @@ async fn spawn_app() -> TestApp {
     config.database.name = Uuid::new_v4().to_string();
     let connection_pool = configure_db(&config.database).await;
 
-    let server =
-        newsletter::run(listener, connection_pool.clone()).expect("Failed to bind address");
+    let sender_email = config
+        .email_client
+        .sender()
+        .expect("Invalid sender email address!");
+    let email_client = EmailClient::new(
+        config.email_client.base_url,
+        sender_email,
+        config.email_client.authorization_token,
+    );
+
+    let server = newsletter::run(listener, connection_pool.clone(), email_client)
+        .expect("Failed to bind address");
 
     // Launch the server as a background task
     // tokio::spawn returns a handle to the spawned future,

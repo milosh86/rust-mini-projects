@@ -15,6 +15,10 @@ impl SubscriberEmail {
     pub fn to_str(&self) -> &str {
         &self.0
     }
+
+    pub fn to_string(&self) -> String {
+        self.0.clone()
+    }
 }
 
 #[cfg(test)]
