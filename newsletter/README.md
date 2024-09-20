@@ -19,6 +19,12 @@
   test
   and see the logs.
 
+### Property-based testing
+
+- If you want to see the random inputs that are being generated, add a
+  `dbg!(&valid_email.0);` and run
+  `cargo test test_or_module_name -- --nocapture`
+
 ## Docker image
 
 To build the docker image, run the following command from project root

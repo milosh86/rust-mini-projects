@@ -147,6 +147,13 @@ async fn subscribe_returns_400_for_invalid_form_data() {
         ("name=le%20guin", "missing the email"),
         ("email=ursula_le_guin%40gmail.com", "missing the name"),
         ("something=else", "missing both name and email"),
+        ("name=&email=ursula_le_guin%40gmail.com", "empty name"),
+        (
+            "name=hello<>there{}&email=ursula_le_guin%40gmail.com",
+            "invalid name",
+        ),
+        // ("name=Ursula&email=", "empty email"),
+        // ("name=Ursula&email=definitely-not-an-email", "invalid email"),
     ];
 
     for (invalid_body, error_message) in invalid_body_pairs {
