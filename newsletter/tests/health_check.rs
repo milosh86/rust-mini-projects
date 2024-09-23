@@ -48,6 +48,7 @@ async fn spawn_app() -> TestApp {
         config.email_client.base_url,
         sender_email,
         config.email_client.authorization_token,
+        std::time::Duration::from_secs(2),
     );
 
     let server = newsletter::run(listener, connection_pool.clone(), email_client)
