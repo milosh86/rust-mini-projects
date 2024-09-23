@@ -1,18 +1,11 @@
-//! tests/health_check.rs
-
 use newsletter::{get_config, get_subscriber, init_subscriber, DatabaseSettings, EmailClient};
-use once_cell::sync::Lazy;
 use secrecy::Secret;
-use sqlx::{query, Connection, Executor, PgConnection, PgPool};
+use sqlx::{Connection, Executor, PgConnection, PgPool};
 use std::net::TcpListener;
+use std::sync::LazyLock;
 use uuid::Uuid;
 
-struct TestApp {
-    address: String,
-    db_pool: PgPool,
-}
-
-static TRACING: Lazy<()> = Lazy::new(|| {
+static TRACING: LazyLock<()> = LazyLock::new(|| {
     let subscriber_name = "test".into();
     let default_filter_level = "debug".into();
 
@@ -25,12 +18,17 @@ static TRACING: Lazy<()> = Lazy::new(|| {
     };
 });
 
+pub struct TestApp {
+    pub address: String,
+    pub db_pool: PgPool,
+}
+
 // no need to implement any clean up logic!
 //
 // when a tokio runtime is shut down all tasks spawned on it are dropped. tokio::test spins up a
 // new runtime at the beginning of each test case, and they shut down at the end of each test case.
-async fn spawn_app() -> TestApp {
-    Lazy::force(&TRACING);
+pub async fn spawn_app() -> TestApp {
+    LazyLock::force(&TRACING);
 
     // Port 0 is special-cased at the OS level: trying to bind port 0 will trigger an OS scan for an
     // available port which will then be bound to the application.
@@ -48,7 +46,7 @@ async fn spawn_app() -> TestApp {
         config.email_client.base_url,
         sender_email,
         config.email_client.authorization_token,
-        std::time::Duration::from_secs(2),
+        std::time::Duration::from_secs(1),
     );
 
     let server = newsletter::run(listener, connection_pool.clone(), email_client)
@@ -70,7 +68,7 @@ async fn spawn_app() -> TestApp {
 // step, but our Postgres instance is used only for test purposes and it’s easy enough to restart it
 // if, after hundreds of test runs, performance starts to suffer due to the number of lingering
 // (almost empty) databases.
-async fn configure_db(config: &DatabaseSettings) -> PgPool {
+pub async fn configure_db(config: &DatabaseSettings) -> PgPool {
     // Create database
     let maintenance_settings = DatabaseSettings {
         name: "postgres".to_string(),
@@ -99,91 +97,4 @@ async fn configure_db(config: &DatabaseSettings) -> PgPool {
         .expect("Failed to migrate the database");
 
     connection_pool
-}
-
-#[tokio::test]
-async fn health_check_works() {
-    // arrange
-    let url = spawn_app().await.address;
-    let client = reqwest::Client::new();
-
-    // act
-    let response = client
-        .get(&format!("{}/health_check", &url))
-        .send()
-        .await
-        .expect("Failed to execute request.");
-
-    // assert
-    assert!(response.status().is_success());
-    assert_eq!(Some(0), response.content_length());
-}
-
-#[tokio::test]
-async fn subscribe_returns_200_for_valid_form_data() {
-    // arrange
-    let app = spawn_app().await;
-    let config = get_config().expect("Failed to read configuration.");
-    // Connection trait must be in scope!
-    let client = reqwest::Client::new();
-    let valid_body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
-
-    // act
-    let response = client
-        .post(&format!("{}/subscriptions", &app.address))
-        .header("Content-Type", "application/x-www-form-urlencoded")
-        .body(valid_body)
-        .send()
-        .await
-        .expect("Failed to execute request.");
-
-    // assert
-    assert_eq!(200, response.status().as_u16());
-
-    let q = query!("SELECT email, name FROM subscriptions")
-        .fetch_one(&app.db_pool)
-        .await
-        .expect("Failed to fetch subscription.");
-
-    assert_eq!(q.email, "ursula_le_guin@gmail.com");
-    assert_eq!(q.name, "le guin");
-}
-
-#[tokio::test]
-async fn subscribe_returns_400_for_invalid_form_data() {
-    // arrange
-    let app_address = spawn_app().await.address;
-    let client = reqwest::Client::new();
-    let invalid_body_pairs = vec![
-        ("name=le%20guin", "missing the email"),
-        ("email=ursula_le_guin%40gmail.com", "missing the name"),
-        ("something=else", "missing both name and email"),
-        ("name=&email=ursula_le_guin%40gmail.com", "empty name"),
-        (
-            "name=hello<>there{}&email=ursula_le_guin%40gmail.com",
-            "invalid name",
-        ),
-        // ("name=Ursula&email=", "empty email"),
-        // ("name=Ursula&email=definitely-not-an-email", "invalid email"),
-    ];
-
-    for (invalid_body, error_message) in invalid_body_pairs {
-        // act
-        let response = client
-            .post(&format!("{}/subscriptions", &app_address))
-            .header("Content-Type", "application/x-www-form-urlencoded")
-            .body(invalid_body)
-            .send()
-            .await
-            .expect("Failed to execute request.");
-
-        // assert
-        assert_eq!(
-            400,
-            response.status().as_u16(),
-            // Additional context on test failure
-            "The API did not return a 400 Bad Request when the payload was {}.",
-            error_message
-        );
-    }
 }
