@@ -1,7 +1,7 @@
-use newsletter::{get_config, get_subscriber, init_subscriber, DatabaseSettings, EmailClient};
+use newsletter::startup::{get_connection_pool, Application};
+use newsletter::{get_config, get_subscriber, init_subscriber, DatabaseSettings};
 use secrecy::Secret;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
-use std::net::TcpListener;
 use std::sync::LazyLock;
 use uuid::Uuid;
 
@@ -30,36 +30,30 @@ pub struct TestApp {
 pub async fn spawn_app() -> TestApp {
     LazyLock::force(&TRACING);
 
-    // Port 0 is special-cased at the OS level: trying to bind port 0 will trigger an OS scan for an
-    // available port which will then be bound to the application.
-    let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind random port");
-    let port = listener.local_addr().unwrap().port();
-    let mut config = get_config().expect("Failed to read configuration.");
-    config.database.name = Uuid::new_v4().to_string();
-    let connection_pool = configure_db(&config.database).await;
+    let config = {
+        let mut config = get_config().expect("Failed to read configuration.");
+        // use a different db for each test case
+        config.database.name = Uuid::new_v4().to_string();
+        // use a random OS port
+        config.application.port = 0;
+        config
+    };
 
-    let sender_email = config
-        .email_client
-        .sender()
-        .expect("Invalid sender email address!");
-    let email_client = EmailClient::new(
-        config.email_client.base_url,
-        sender_email,
-        config.email_client.authorization_token,
-        std::time::Duration::from_secs(1),
-    );
+    configure_db(&config.database).await;
 
-    let server = newsletter::run(listener, connection_pool.clone(), email_client)
-        .expect("Failed to bind address");
+    let application = Application::build(config.clone())
+        .await
+        .expect("Failed to build application server!");
 
+    let address = format!("http://127.0.0.1:{}", application.port());
     // Launch the server as a background task
     // tokio::spawn returns a handle to the spawned future,
     // but we have no use for it here, hence the non-binding let
-    let _ = tokio::spawn(server);
+    let _ = tokio::spawn(application.run_until_stopped());
 
     TestApp {
-        address: format!("http://localhost:{}", port),
-        db_pool: connection_pool,
+        address,
+        db_pool: get_connection_pool(&config.database),
     }
 }
 
@@ -78,6 +72,7 @@ pub async fn configure_db(config: &DatabaseSettings) -> PgPool {
         port: config.port,
         require_ssl: config.require_ssl,
     };
+
     let mut connection = PgConnection::connect_with(&maintenance_settings.connection_options())
         .await
         .expect("Failed to connect to Postgres.");
