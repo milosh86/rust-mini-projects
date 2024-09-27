@@ -1,15 +1,21 @@
 use crate::helpers::spawn_app;
 use newsletter::get_config;
 use sqlx::query;
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, ResponseTemplate};
 
 #[tokio::test]
 async fn subscribe_returns_200_for_valid_form_data() {
     // arrange
     let app = spawn_app().await;
     let config = get_config().expect("Failed to read configuration.");
-    // Connection trait must be in scope!
-    let client = reqwest::Client::new();
     let valid_body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
+
+    Mock::given(path("/email"))
+        .and(method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&app.email_server)
+        .await;
 
     // act
     let response = app.post_subscriptions(valid_body.into()).await;
@@ -30,7 +36,6 @@ async fn subscribe_returns_200_for_valid_form_data() {
 async fn subscribe_returns_400_for_invalid_form_data() {
     // arrange
     let app = spawn_app().await;
-    let client = reqwest::Client::new();
     let invalid_body_pairs = vec![
         ("name=le%20guin", "missing the email"),
         ("email=ursula_le_guin%40gmail.com", "missing the name"),
@@ -57,4 +62,24 @@ async fn subscribe_returns_400_for_invalid_form_data() {
             error_message
         );
     }
+}
+
+#[tokio::test]
+async fn subscribe_sends_a_confirmation_email_for_valid_data() {
+    // arrange
+    let app = spawn_app().await;
+    let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
+
+    Mock::given(path("/email"))
+        .and(method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&app.email_server)
+        .await;
+
+    // act
+    app.post_subscriptions(body.into()).await;
+
+    // assert
+    // mock asserts on drop
 }
