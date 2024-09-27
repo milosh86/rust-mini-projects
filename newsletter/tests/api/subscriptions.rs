@@ -12,13 +12,7 @@ async fn subscribe_returns_200_for_valid_form_data() {
     let valid_body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
 
     // act
-    let response = client
-        .post(&format!("{}/subscriptions", &app.address))
-        .header("Content-Type", "application/x-www-form-urlencoded")
-        .body(valid_body)
-        .send()
-        .await
-        .expect("Failed to execute request.");
+    let response = app.post_subscriptions(valid_body.into()).await;
 
     // assert
     assert_eq!(200, response.status().as_u16());
@@ -35,7 +29,7 @@ async fn subscribe_returns_200_for_valid_form_data() {
 #[tokio::test]
 async fn subscribe_returns_400_for_invalid_form_data() {
     // arrange
-    let app_address = spawn_app().await.address;
+    let app = spawn_app().await;
     let client = reqwest::Client::new();
     let invalid_body_pairs = vec![
         ("name=le%20guin", "missing the email"),
@@ -46,19 +40,13 @@ async fn subscribe_returns_400_for_invalid_form_data() {
             "name=hello<>there{}&email=ursula_le_guin%40gmail.com",
             "invalid name",
         ),
-        // ("name=Ursula&email=", "empty email"),
-        // ("name=Ursula&email=definitely-not-an-email", "invalid email"),
+        ("name=Ursula&email=", "empty email"),
+        ("name=Ursula&email=definitely-not-an-email", "invalid email"),
     ];
 
     for (invalid_body, error_message) in invalid_body_pairs {
         // act
-        let response = client
-            .post(&format!("{}/subscriptions", &app_address))
-            .header("Content-Type", "application/x-www-form-urlencoded")
-            .body(invalid_body)
-            .send()
-            .await
-            .expect("Failed to execute request.");
+        let response = app.post_subscriptions(invalid_body.into()).await;
 
         // assert
         assert_eq!(

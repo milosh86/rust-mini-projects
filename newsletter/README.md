@@ -39,3 +39,24 @@ To run:
 ```bash
 docker run -p 8000:8000 newsletter
 ```
+
+## Database
+
+To initialize the local database from scratch, run the following command:
+
+```bash
+./scripts/init_db.sh
+```
+
+To perform a migration on an existing local instance, run the following command:
+
+```bash
+SKIP_DOCKER=true POSTGRES_PORT=5433 ./scripts/init_db.sh
+```
+
+`SKIP_DOCKER=true` is used to skip running the new instance in Docker!
+
+To perform a migration on a production instance, run the following command:
+
+```bash
+```
