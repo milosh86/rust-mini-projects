@@ -20,12 +20,40 @@ static TRACING: LazyLock<()> = LazyLock::new(|| {
 });
 
 pub struct TestApp {
+    pub port: u16,
     pub address: String,
     pub db_pool: PgPool,
     pub email_server: MockServer,
 }
 
+pub struct ConfirmationLinks {
+    pub html: reqwest::Url,
+    pub plain_text: reqwest::Url,
+}
+
 impl TestApp {
+    pub fn get_confirmation_links(&self, email_request: &wiremock::Request) -> ConfirmationLinks {
+        let body: serde_json::Value = serde_json::from_slice(&email_request.body).unwrap();
+        // Extract the link from one of the request fields.
+        let get_link = |s: &str| {
+            let links: Vec<_> = linkify::LinkFinder::new()
+                .links(s)
+                .filter(|l| *l.kind() == linkify::LinkKind::Url)
+                .collect();
+            assert_eq!(links.len(), 1);
+            let raw_link = links[0].as_str().to_owned();
+            let mut confirmation_link = reqwest::Url::parse(&raw_link).unwrap();
+            // Let's make sure we don't call random APIs on the web
+            assert_eq!(confirmation_link.host_str().unwrap(), "127.0.0.1");
+            confirmation_link.set_port(Some(self.port)).unwrap();
+            confirmation_link
+        };
+        let html = get_link(&body["HtmlBody"].as_str().unwrap());
+        let plain_text = get_link(&body["TextBody"].as_str().unwrap());
+
+        ConfirmationLinks { html, plain_text }
+    }
+
     pub async fn post_subscriptions(&self, body: String) -> reqwest::Response {
         reqwest::Client::new()
             .post(&format!("{}/subscriptions", &self.address))
@@ -63,7 +91,8 @@ pub async fn spawn_app() -> TestApp {
         .await
         .expect("Failed to build application server!");
 
-    let address = format!("http://127.0.0.1:{}", application.port());
+    let application_port = application.port();
+    let address = format!("http://127.0.0.1:{}", application_port);
     // Launch the server as a background task
     // tokio::spawn returns a handle to the spawned future,
     // but we have no use for it here, hence the non-binding let
@@ -71,6 +100,7 @@ pub async fn spawn_app() -> TestApp {
 
     TestApp {
         address,
+        port: application_port,
         db_pool: get_connection_pool(&config.database),
         email_server: mock_server,
     }

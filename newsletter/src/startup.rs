@@ -1,7 +1,7 @@
 use std::net::TcpListener;
 
 use crate::email_client::EmailClient;
-use crate::routes::{health_check, subscribe};
+use crate::routes::{confirm_subscription, health_check, subscribe};
 use crate::{get_subscriber, init_subscriber, DatabaseSettings, Settings};
 use actix_web::dev::Server;
 use actix_web::{web, App, HttpServer};
@@ -13,23 +13,37 @@ pub fn get_connection_pool(db_config: &DatabaseSettings) -> PgPool {
     PgPoolOptions::new().connect_lazy_with(db_config.connection_options())
 }
 
+// We need to define a wrapper type in order to retrieve the URL
+// in the `subscribe` handler.
+// Retrieval from the context, in actix-web, is type-based: using
+// a raw `String` would expose us to conflicts.
+#[derive(Debug)]
+pub struct ApplicationBaseUrl(pub String);
+
 pub fn run(
     listener: TcpListener,
     pg_pool: PgPool,
     email_client: EmailClient,
+    base_url: String,
 ) -> Result<Server, std::io::Error> {
     let connection_pool_wrapped = web::Data::new(pg_pool);
     let email_client_wrapped = web::Data::new(email_client);
+    let base_url = web::Data::new(ApplicationBaseUrl(base_url));
 
     tracing::info!("Starting server at http://{}", listener.local_addr()?);
     let server = HttpServer::new(move || {
         App::new()
             .wrap(TracingLogger::default())
             .route("/health_check", web::get().to(health_check))
+            .route(
+                "/subscriptions/confirm",
+                web::get().to(confirm_subscription),
+            )
             .route("/subscriptions", web::post().to(subscribe))
             // Get a pointer copy and attach it to the application state
             .app_data(connection_pool_wrapped.clone())
             .app_data(email_client_wrapped.clone())
+            .app_data(base_url.clone())
     })
     .listen(listener)?
     .run();
@@ -61,7 +75,12 @@ impl Application {
         let address = format!("{}:{}", config.application.host, config.application.port);
         let listener = TcpListener::bind(address)?;
         let port = listener.local_addr()?.port();
-        let server = run(listener, connection_pool, email_client)?;
+        let server = run(
+            listener,
+            connection_pool,
+            email_client,
+            config.application.base_url,
+        )?;
 
         Ok(Self { port, server })
     }
